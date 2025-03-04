@@ -41,7 +41,12 @@ resource "google_container_node_pool" "preemptible_nodes" {
   name       = "${var.cluster_name}-node-pool"
   cluster    = google_container_cluster.primary.name
   location   = var.zone
-  node_count = var.node_count
+  
+  # Replace node_count with autoscaling block
+  autoscaling {
+    min_node_count = 0  # Allow scaling down to 0 when idle
+    max_node_count = 3  # Maximum of 3 nodes
+  }
 
   management {
     auto_repair  = true
