@@ -1,0 +1,10 @@
+# Example terraform.tfvars file
+# Copy to terraform.tfvars and modify as needed
+
+# Required
+project_id = "your-gcp-project-id"
+
+# Optional - defaults are defined in variables.tf
+cluster_name = "arm-gke-cluster"
+location     = "us-central1-a"  # Must be a region with T2A support
+environment  = "staging"

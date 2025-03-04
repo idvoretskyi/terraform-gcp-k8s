@@ -5,9 +5,10 @@ This repository contains Terraform configurations for setting up a cost-efficien
 ## Key Features
 
 * Uses ARM-based Tau T2A instances (t2a-standard-1) for optimal price/performance
-* Located in US East region for cost efficiency
-* Includes autoscaling configuration from 0-3 nodes
-* Configured with Pod Disruption Budgets for reliable scaling
+* Located in us-central1 region where T2A instances are available
+* Includes autoscaling configuration from 0 to 3 nodes (configurable)
+* Uses a single, simplified ARM-based node pool
+* Uses the latest available Kubernetes version via RAPID release channel
 
 ## Prerequisites
 
@@ -37,13 +38,54 @@ This repository contains Terraform configurations for setting up a cost-efficien
 
 5.  Once the cluster is created, you can retrieve the cluster name and endpoint from the Terraform outputs.
 
+## Kubernetes Version Management
+
+This configuration ensures you're always using the latest Kubernetes version available on GKE by:
+
+1. Setting the `min_master_version` to "latest"
+2. Using the "RAPID" release channel
+
+The RAPID release channel provides access to the newest stable Kubernetes versions as soon as they're available on GKE. This ensures you can leverage the latest features, security updates, and bug fixes.
+
+If you prefer more stability over having the latest features:
+
+- Change to the "REGULAR" release channel for a balance of new features and stability
+- Change to the "STABLE" release channel for maximum stability (but older versions)
+- Specify a concrete version like `min_master_version = "1.27"` instead of "latest"
+
+Example configuration:
+```hcl
+resource "google_container_cluster" "primary" {
+  # ...other settings...
+  
+  # For stability (alternatives to our default "RAPID" setting)
+  release_channel {
+    channel = "REGULAR"  # or "STABLE" for even more stability
+  }
+  
+  # Specific version instead of latest
+  min_master_version = "1.27"  # Replace with desired version
+}
+```
+
 ## ARM-based Instances
 
-This configuration uses the T2A ARM-based instances which offer several advantages:
+This configuration uses a single node pool with T2A ARM-based instances which offer several advantages:
 
 * **Cost efficiency**: Save up to 40% compared to x86 instances of similar size
 * **Better performance per dollar**: Excellent for containerized workloads
 * **Reduced carbon footprint**: ARM processors typically have better power efficiency
+
+### T2A Instance Availability
+
+T2A instances are only available in specific regions/zones. As of the latest update, they are available in:
+
+* us-central1 (zones a, b, f)
+* us-south1 (zones a, b, c)
+* europe-west4 (zones a, b, c)
+* asia-southeast1 (zones a, b, c)
+
+If you encounter the "machine type not found" error, you need to modify the region/zone in your Terraform configuration to use one of the supported locations.
 
 ### Application Compatibility
 
@@ -113,6 +155,41 @@ If you notice nodes not scaling down despite low utilization:
    ```
    kubectl describe node <node-name> | grep -A10 Events:
    ```
+
+## Troubleshooting
+
+### Machine Type Not Found Error
+
+If you encounter an error like:
+```
+Error: error creating NodePool: googleapi: Error 400: Invalid machine type t2a-standard-1 in zone [zone]: resource not found
+```
+
+This means the T2A ARM-based instances are not available in your selected region/zone. To fix this:
+
+1. Modify your Terraform configuration to use a region that supports T2A instances:
+
+```hcl
+resource "google_container_cluster" "primary" {
+  name     = "arm-cluster"
+  location = "us-central1"  # Change to a T2A-supported region
+  # ...other configuration...
+}
+```
+
+2. Check the latest documentation for [Tau T2A VM availability](https://cloud.google.com/compute/docs/regions-zones#available) to ensure you're using a supported region.
+
+## Customization
+
+The cluster can be customized by modifying the variables in `terraform.tfvars`:
+
+```hcl
+project_id   = "your-gcp-project-id"
+cluster_name = "arm-cluster"
+location     = "us-central1-a"
+node_count   = 5  # Adjust maximum node count as needed
+environment  = "production"
+```
 
 ## Destroy
 

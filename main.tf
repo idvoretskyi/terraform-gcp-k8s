@@ -9,108 +9,61 @@ terraform {
 
 provider "google" {
   project = var.project_id
-  region  = var.region
 }
 
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
-  location = var.zone
+  location = var.location
   
-  # We can't create a cluster with no node pool defined, but we want to only use
-  # separately managed node pools. So we create the smallest possible default
-  # node pool and immediately delete it.
+  # Remove default node pool
   remove_default_node_pool = true
   initial_node_count       = 1
-
+  
+  # Other cluster settings
   networking_mode = "VPC_NATIVE"
-
-  # Use the most recent Kubernetes version in the RAPID channel
+  
+  # Use RAPID release channel for latest Kubernetes versions
   release_channel {
     channel = "RAPID"
   }
-
-  # https://cloud.google.com/kubernetes-engine/docs/how-to/alias-ips
-  network_policy {
-    enabled = true
-  }
-  # Empty ip_allocation_policy block enables VPC-native cluster
-  ip_allocation_policy {}
-}
-
-resource "google_container_node_pool" "preemptible_nodes" {
-  name       = "${var.cluster_name}-node-pool"
-  cluster    = google_container_cluster.primary.name
-  location   = var.zone
   
-  # Replace node_count with autoscaling block
-  autoscaling {
-    min_node_count = 0  # Allow scaling down to 0 when idle
-    max_node_count = 3  # Maximum of 3 nodes
-    # Adding location policy for better scale down behavior
-    location_policy = "BALANCED"
-  }
-
-  management {
-    auto_repair  = true
-    auto_upgrade = true
-  }
-
-  node_config {
-    preemptible  = true  # This setting is already in place
-    machine_type = "e2-medium"  # Changed from f1-micro to e2-medium
-    
-    # Add disk configurations
-    disk_size_gb = 100
-    disk_type    = "pd-standard"
-
-    # Google recommends custom service accounts with minimal permissions
-    service_account = var.service_account == "" ? null : var.service_account
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-    
-    # Add labels to help with pod affinity/anti-affinity
-    labels = {
-      "node-pool"   = "${var.cluster_name}-node-pool"
-      "environment" = var.environment
-    }
-
-    # Add kubelet config to improve pod eviction behavior
-    kubelet_config {
-      cpu_manager_policy   = "static"
-      cpu_cfs_quota        = true
-      pod_pids_limit       = 4096
-    }
-    
-    # Kubelet eviction thresholds are managed by GKE default settings
-    # or can be configured post-deployment through Kubernetes directly
-  }
+  # Set minimum Kubernetes version to latest available
+  min_master_version = "latest"
 }
 
+# Use a single node pool with ARM instances
 resource "google_container_node_pool" "arm_nodes" {
   name       = "${var.cluster_name}-arm-pool"
   cluster    = google_container_cluster.primary.name
-  location   = var.zone
+  location   = var.location
   
+  # Autoscaling configuration
   autoscaling {
-    min_node_count = 0
-    max_node_count = 3
+    min_node_count = 0  # Allow scaling down to 0 when idle
+    max_node_count = var.node_count
     location_policy = "BALANCED"
   }
-
+  
+  # Management configuration for auto-repair and auto-upgrade
   management {
     auto_repair  = true
     auto_upgrade = true
   }
 
   node_config {
+    # Use ARM-based T2A instance
+    machine_type = "t2a-standard-1"
+    
+    # Configure preemptible VMs for cost savings
     preemptible  = true
-    machine_type = "t2a-standard-1"  # ARM-based instance type
     
     # Add disk configurations
     disk_size_gb = 100
     disk_type    = "pd-standard"
-
+    
+    # Use Containerd runtime
+    image_type   = "COS_CONTAINERD"
+    
     # Google recommends custom service accounts with minimal permissions
     service_account = var.service_account == "" ? null : var.service_account
     oauth_scopes = [
