@@ -1,24 +1,24 @@
 variable "project_id" {
-  description = "GCP Project ID"
+  description = "The GCP project ID"
   type        = string
 }
 
 variable "region" {
-  description = "GCP region to deploy resources"
+  description = "The GCP region where resources will be created"
   type        = string
-  default     = "us-east4"
+  default     = "us-east1"  # Updated to us-east1 for cost efficiency
 }
 
 variable "zone" {
-  description = "GCP zone within the region"
+  description = "The GCP zone where the cluster will be created"
   type        = string
-  default     = "us-east4-a"
+  default     = "us-east1-b"  # Updated to us-east1-b
 }
 
 variable "cluster_name" {
-  description = "Name of the GKE cluster"
+  description = "The name of the GKE cluster"
   type        = string
-  default     = "preemptible-gke-cluster"
+  default     = "arm-gke-cluster"  # Updated to reflect ARM architecture
 }
 
 variable "node_count" {
@@ -28,7 +28,13 @@ variable "node_count" {
 }
 
 variable "service_account" {
-  description = "Service account to use for GKE node pool. If empty, the Compute Engine default service account will be used."
+  description = "The service account to use for the GKE nodes"
   type        = string
   default     = ""
+}
+
+variable "environment" {
+  description = "Environment for the cluster (e.g., dev, staging, prod)"
+  type        = string
+  default     = "dev"
 }

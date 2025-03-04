@@ -46,6 +46,8 @@ resource "google_container_node_pool" "preemptible_nodes" {
   autoscaling {
     min_node_count = 0  # Allow scaling down to 0 when idle
     max_node_count = 3  # Maximum of 3 nodes
+    # Adding location policy for better scale down behavior
+    location_policy = "BALANCED"
   }
 
   management {
@@ -66,5 +68,88 @@ resource "google_container_node_pool" "preemptible_nodes" {
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
+    
+    # Add labels to help with pod affinity/anti-affinity
+    labels = {
+      "node-pool"   = "${var.cluster_name}-node-pool"
+      "environment" = var.environment
+    }
+
+    # Add kubelet config to improve pod eviction behavior
+    kubelet_config {
+      cpu_manager_policy   = "static"
+      cpu_cfs_quota        = true
+      pod_pids_limit       = 4096
+    }
+    
+    # Kubelet eviction thresholds are managed by GKE default settings
+    # or can be configured post-deployment through Kubernetes directly
+  }
+}
+
+resource "google_container_node_pool" "arm_nodes" {
+  name       = "${var.cluster_name}-arm-pool"
+  cluster    = google_container_cluster.primary.name
+  location   = var.zone
+  
+  autoscaling {
+    min_node_count = 0
+    max_node_count = 3
+    location_policy = "BALANCED"
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  node_config {
+    preemptible  = true
+    machine_type = "t2a-standard-1"  # ARM-based instance type
+    
+    # Add disk configurations
+    disk_size_gb = 100
+    disk_type    = "pd-standard"
+
+    # Google recommends custom service accounts with minimal permissions
+    service_account = var.service_account == "" ? null : var.service_account
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+    
+    # Add labels to help with pod affinity/anti-affinity
+    labels = {
+      "node-pool"   = "${var.cluster_name}-arm-pool"
+      "environment" = var.environment
+      "architecture" = "arm64"
+    }
+
+    # Add kubelet config to improve pod eviction behavior
+    kubelet_config {
+      cpu_manager_policy   = "static"
+      cpu_cfs_quota        = true
+      pod_pids_limit       = 4096
+    }
+  }
+}
+
+# Add a default PDB for system components
+resource "kubernetes_pod_disruption_budget" "system_components_pdb" {
+  depends_on = [google_container_cluster.primary]
+  
+  metadata {
+    name = "system-components-pdb"
+    namespace = "kube-system"
+  }
+  
+  spec {
+    selector {
+      match_labels = {
+        k8s-app = "kube-dns"  # Example for CoreDNS, adapt as needed
+      }
+    }
+    
+    # Allow disruption of at most 1 pod at a time (maxUnavailable)
+    max_unavailable = "1"
   }
 }
