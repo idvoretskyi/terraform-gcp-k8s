@@ -54,11 +54,15 @@ resource "google_container_node_pool" "preemptible_nodes" {
   }
 
   node_config {
-    preemptible  = true
+    preemptible  = true  # This setting is already in place
     machine_type = "e2-medium"  # Changed from f1-micro to e2-medium
+    
+    # Add disk configurations
+    disk_size_gb = 100
+    disk_type    = "pd-standard"
 
     # Google recommends custom service accounts with minimal permissions
-    service_account = var.service_account
+    service_account = var.service_account == "" ? null : var.service_account
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]

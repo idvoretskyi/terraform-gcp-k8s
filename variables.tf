@@ -28,7 +28,7 @@ variable "node_count" {
 }
 
 variable "service_account" {
-  description = "Service account to use for GKE node pool"
+  description = "Service account to use for GKE node pool. If empty, the Compute Engine default service account will be used."
   type        = string
   default     = ""
 }
