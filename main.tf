@@ -13,14 +13,16 @@ provider "google" {
 }
 
 resource "google_container_cluster" "primary" {
-  name     = "preemptible-cluster"
+  name     = var.cluster_name
   location = var.zone
   
   # We can't create a cluster with no node pool defined, but we want to only use
-  # separately managed node pools.  So we create a minimal initial node pool
-  # and immediately delete it.
-  initial_node_count = 1
+  # separately managed node pools. So we create the smallest possible default
+  # node pool and immediately delete it.
   remove_default_node_pool = true
+  initial_node_count       = 1
+
+  networking_mode = "VPC_NATIVE"
 
   # Use the most recent Kubernetes version in the RAPID channel
   release_channel {
@@ -35,11 +37,11 @@ resource "google_container_cluster" "primary" {
   ip_allocation_policy {}
 }
 
-resource "google_container_node_pool" "primary_preemptible_nodes" {
-  name       = "preemptible-nodes"
-  location   = var.zone
+resource "google_container_node_pool" "preemptible_nodes" {
+  name       = "${var.cluster_name}-node-pool"
   cluster    = google_container_cluster.primary.name
-  node_count = 3
+  location   = var.zone
+  node_count = var.node_count
 
   management {
     auto_repair  = true
@@ -48,9 +50,12 @@ resource "google_container_node_pool" "primary_preemptible_nodes" {
 
   node_config {
     preemptible  = true
-    machine_type = "f1-micro"
+    machine_type = "e2-medium"  # Changed from f1-micro to e2-medium
+
+    # Google recommends custom service accounts with minimal permissions
+    service_account = var.service_account
     oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
 }
