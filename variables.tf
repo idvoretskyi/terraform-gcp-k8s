@@ -38,3 +38,28 @@ variable "node_count" {
   type        = number
   default     = 3
 }
+
+variable "enable_monitoring" {
+  description = "Whether to enable Prometheus and Grafana monitoring"
+  type        = bool
+  default     = true
+}
+
+variable "grafana_admin_password" {
+  description = "Admin password for Grafana"
+  type        = string
+  default     = "admin"
+  sensitive   = true
+}
+
+variable "monitoring_namespace" {
+  description = "Namespace for monitoring tools"
+  type        = string
+  default     = "monitoring"
+}
+
+variable "grafana_expose_lb" {
+  description = "Whether to expose Grafana with a LoadBalancer"
+  type        = bool
+  default     = false
+}

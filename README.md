@@ -250,33 +250,30 @@ The configuration automatically assigns IP ranges for pods and services using GK
 
 This repository includes an optional monitoring module that deploys Prometheus and Grafana on your ARM-based GKE cluster.
 
-### Enabling Monitoring
+### Enabling/Disabling Monitoring
 
-To enable monitoring, add the following to your Terraform configuration:
+Monitoring is **enabled by default**. You can control this by setting the `enable_monitoring` variable:
 
 ```hcl
-provider "helm" {
-  kubernetes {
-    host                   = "https://${google_container_cluster.primary.endpoint}"
-    token                  = data.google_client_config.default.access_token
-    cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
-  }
-}
+# In your terraform.tfvars file:
+enable_monitoring = true  # or false to disable
+```
 
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.primary.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
-}
+You can also disable it from the command line:
 
-module "monitoring" {
-  source = "./modules/monitoring"
-  
-  # Optional customizations
-  namespace              = "monitoring"
-  grafana_admin_password = var.grafana_password
-  grafana_expose_lb      = true
-}
+```bash
+terraform apply -var="enable_monitoring=false"
+```
+
+### Monitoring Configuration Options
+
+You can configure the monitoring setup with the following variables:
+
+```hcl
+# In your terraform.tfvars file:
+grafana_admin_password = "secure-password"  # Default: "admin"
+monitoring_namespace   = "monitoring"       # Default: "monitoring" 
+grafana_expose_lb      = true              # Default: false
 ```
 
 ### Monitoring Features
@@ -291,7 +288,7 @@ module "monitoring" {
 If you enable the LoadBalancer (`grafana_expose_lb = true`), you can access Grafana at the external IP shown in the Terraform outputs:
 
 ```bash
-terraform output -module=monitoring grafana_lb_ip
+terraform output grafana_url
 ```
 
 Login using:

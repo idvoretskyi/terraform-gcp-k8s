@@ -4,12 +4,23 @@ terraform {
       source  = "hashicorp/google"
       version = "4.68.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.20"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.9"
+    }
   }
 }
 
 provider "google" {
   project = var.project_id
 }
+
+# Get current GCP authentication for k8s providers
+data "google_client_config" "default" {}
 
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
@@ -44,11 +55,13 @@ resource "google_container_node_pool" "arm_nodes" {
   cluster    = google_container_cluster.primary.id
   location   = var.location
   
+  # Set initial node count
+  initial_node_count = 1
+  
   # Autoscaling configuration
   autoscaling {
-    min_node_count = 0  # Allow scaling down to 0 when idle
+    min_node_count = 0
     max_node_count = var.node_count
-    location_policy = "BALANCED"
   }
   
   # Management configuration for auto-repair and auto-upgrade
@@ -57,41 +70,58 @@ resource "google_container_node_pool" "arm_nodes" {
     auto_upgrade = true
   }
 
+  # Node configuration is required and must have at least machine_type, disk_size_gb, and disk_type
   node_config {
-    # Use ARM-based T2A instance
     machine_type = "t2a-standard-1"
-    
-    # Configure preemptible VMs for cost savings
-    preemptible  = true
-    
-    # Add disk configurations
     disk_size_gb = 100
     disk_type    = "pd-standard"
     
-    # Use Containerd runtime
+    # Optional settings
+    preemptible  = true
     image_type   = "COS_CONTAINERD"
     
-    # Google recommends custom service accounts with minimal permissions
-    service_account = var.service_account == "" ? null : var.service_account
     oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/logging.write",
-      "https://www.googleapis.com/auth/monitoring",
-      "https://www.googleapis.com/auth/devstorage.read_only"
+      "https://www.googleapis.com/auth/cloud-platform"
     ]
     
-    # Add labels to help with pod affinity/anti-affinity
     labels = {
-      "node-pool"   = "${var.cluster_name}-arm-pool"
-      "environment" = var.environment
       "architecture" = "arm64"
-    }
-
-    # Add kubelet config to improve pod eviction behavior
-    kubelet_config {
-      cpu_manager_policy   = "static"
-      cpu_cfs_quota        = true
-      pod_pids_limit       = 4096
+      "environment"  = var.environment
     }
   }
+  
+  # Ensure the creation happens serially after the cluster
+  depends_on = [
+    google_container_cluster.primary
+  ]
+}
+
+# Configure Kubernetes provider to access GKE cluster
+provider "kubernetes" {
+  host                   = "https://${google_container_cluster.primary.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+}
+
+# Configure Helm provider
+provider "helm" {
+  kubernetes {
+    host                   = "https://${google_container_cluster.primary.endpoint}"
+    token                  = data.google_client_config.default.access_token
+    cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+  }
+}
+
+# Conditionally deploy the monitoring module
+module "monitoring" {
+  count  = var.enable_monitoring ? 1 : 0
+  source = "./modules/monitoring"
+  
+  namespace              = var.monitoring_namespace
+  grafana_admin_password = var.grafana_admin_password
+  grafana_expose_lb      = var.grafana_expose_lb
+  
+  depends_on = [
+    google_container_node_pool.arm_nodes
+  ]
 }
