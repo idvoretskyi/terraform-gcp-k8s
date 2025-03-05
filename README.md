@@ -246,6 +246,60 @@ This cluster uses VPC-native networking (alias IP) which provides:
 
 The configuration automatically assigns IP ranges for pods and services using GKE's automatic IP allocation feature.
 
+## Optional Monitoring with Prometheus and Grafana
+
+This repository includes an optional monitoring module that deploys Prometheus and Grafana on your ARM-based GKE cluster.
+
+### Enabling Monitoring
+
+To enable monitoring, add the following to your Terraform configuration:
+
+```hcl
+provider "helm" {
+  kubernetes {
+    host                   = "https://${google_container_cluster.primary.endpoint}"
+    token                  = data.google_client_config.default.access_token
+    cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+  }
+}
+
+provider "kubernetes" {
+  host                   = "https://${google_container_cluster.primary.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+}
+
+module "monitoring" {
+  source = "./modules/monitoring"
+  
+  # Optional customizations
+  namespace              = "monitoring"
+  grafana_admin_password = var.grafana_password
+  grafana_expose_lb      = true
+}
+```
+
+### Monitoring Features
+
+* **Prometheus**: Collects and stores metrics from your Kubernetes cluster
+* **Grafana**: Provides visualization and dashboards for the collected metrics
+* **ARM-optimized**: Configured to work with ARM64 architecture
+* **Persistence**: Both Prometheus and Grafana have persistent storage
+
+### Accessing Grafana
+
+If you enable the LoadBalancer (`grafana_expose_lb = true`), you can access Grafana at the external IP shown in the Terraform outputs:
+
+```bash
+terraform output -module=monitoring grafana_lb_ip
+```
+
+Login using:
+* Username: admin
+* Password: The value of `grafana_admin_password` (default: "admin")
+
+For more details, see the [monitoring module documentation](./modules/monitoring/README.md).
+
 ## Notes
 *   Preemptible nodes are significantly cheaper than regular nodes but can be terminated by GCP at any time.
 *   Ensure that your workloads can tolerate interruptions when using preemptible nodes.
