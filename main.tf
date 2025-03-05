@@ -22,6 +22,13 @@ resource "google_container_cluster" "primary" {
   # Other cluster settings
   networking_mode = "VPC_NATIVE"
   
+  # Required for VPC-native clusters
+  ip_allocation_policy {
+    # By not specifying ranges, GKE will auto-allocate from the VPC
+    cluster_ipv4_cidr_block  = ""
+    services_ipv4_cidr_block = ""
+  }
+  
   # Use RAPID release channel for latest Kubernetes versions
   release_channel {
     channel = "RAPID"
@@ -34,7 +41,7 @@ resource "google_container_cluster" "primary" {
 # Use a single node pool with ARM instances
 resource "google_container_node_pool" "arm_nodes" {
   name       = "${var.cluster_name}-arm-pool"
-  cluster    = google_container_cluster.primary.name
+  cluster    = google_container_cluster.primary.id
   location   = var.location
   
   # Autoscaling configuration
@@ -67,7 +74,10 @@ resource "google_container_node_pool" "arm_nodes" {
     # Google recommends custom service accounts with minimal permissions
     service_account = var.service_account == "" ? null : var.service_account
     oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring",
+      "https://www.googleapis.com/auth/devstorage.read_only"
     ]
     
     # Add labels to help with pod affinity/anti-affinity
@@ -83,26 +93,5 @@ resource "google_container_node_pool" "arm_nodes" {
       cpu_cfs_quota        = true
       pod_pids_limit       = 4096
     }
-  }
-}
-
-# Add a default PDB for system components
-resource "kubernetes_pod_disruption_budget" "system_components_pdb" {
-  depends_on = [google_container_cluster.primary]
-  
-  metadata {
-    name = "system-components-pdb"
-    namespace = "kube-system"
-  }
-  
-  spec {
-    selector {
-      match_labels = {
-        k8s-app = "kube-dns"  # Example for CoreDNS, adapt as needed
-      }
-    }
-    
-    # Allow disruption of at most 1 pod at a time (maxUnavailable)
-    max_unavailable = "1"
   }
 }

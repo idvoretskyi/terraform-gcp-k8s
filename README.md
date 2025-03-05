@@ -9,6 +9,7 @@ This repository contains Terraform configurations for setting up a cost-efficien
 * Includes autoscaling configuration from 0 to 3 nodes (configurable)
 * Uses a single, simplified ARM-based node pool
 * Uses the latest available Kubernetes version via RAPID release channel
+* Properly configured for VPC-native networking
 
 ## Prerequisites
 
@@ -36,7 +37,16 @@ This repository contains Terraform configurations for setting up a cost-efficien
     terraform apply
     ```
 
-5.  Once the cluster is created, you can retrieve the cluster name and endpoint from the Terraform outputs.
+5.  Once the cluster is created, connect to it using the command provided in the outputs:
+    ```bash
+    gcloud container clusters get-credentials CLUSTER_NAME --zone ZONE --project PROJECT_ID
+    ```
+
+6.  Apply recommended Pod Disruption Budgets for critical components:
+    ```bash
+    # The exact command will be shown in the Terraform outputs
+    kubectl apply -f pdb.yaml
+    ```
 
 ## Kubernetes Version Management
 
@@ -111,6 +121,8 @@ spec:
 
 ## Pod Disruption Budgets
 
+Note: Pod Disruption Budgets should be created AFTER the cluster is running.
+
 ### Understanding Scale-Down Blocking
 
 Pod Disruption Budgets (PDBs) are Kubernetes resources that limit the number of pods that can be down simultaneously during voluntary disruptions. When a cluster needs to scale down, it needs to evict pods from nodes being removed. Without proper PDB configurations, pods may block the scale-down process.
@@ -136,6 +148,32 @@ Pod Disruption Budgets (PDBs) are Kubernetes resources that limit the number of 
 
 3. **Add PDBs to your Helm charts or deployment manifests**:
    Make sure each application deployed has an appropriate PDB defined.
+
+### Creating PDBs Post-Deployment
+
+After deploying your cluster, use the commands provided in the Terraform outputs to:
+1. Connect to the cluster
+2. Create a default PDB for system components
+
+For your own applications, create PDBs using either:
+
+```bash
+# Using kubectl directly
+kubectl apply -f - <<EOF
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: app-pdb
+  namespace: default
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: your-application
+EOF
+```
+
+Or using Helm by including PDBs in your application charts.
 
 ### Troubleshooting Scale-Down Issues
 
@@ -198,6 +236,16 @@ To destroy the cluster, run:
 ```bash
 terraform destroy
 ```
+
+## Network Configuration
+
+This cluster uses VPC-native networking (alias IP) which provides:
+- Better network performance
+- Native integration with Google Cloud load balancers
+- Support for larger pod density per node
+
+The configuration automatically assigns IP ranges for pods and services using GKE's automatic IP allocation feature.
+
 ## Notes
 *   Preemptible nodes are significantly cheaper than regular nodes but can be terminated by GCP at any time.
 *   Ensure that your workloads can tolerate interruptions when using preemptible nodes.
