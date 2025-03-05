@@ -31,3 +31,13 @@ output "pdb_creation_command" {
     EOF
     EOT
 }
+
+output "project_id" {
+  description = "The GCP project ID being used"
+  value       = local.project_id
+}
+
+output "project_source" {
+  description = "Source of the project ID (user-specified or gcloud config)"
+  value       = var.project_id != null ? "user-specified" : "gcloud-config"
+}

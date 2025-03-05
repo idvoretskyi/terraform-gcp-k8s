@@ -1,6 +1,7 @@
 variable "project_id" {
-  description = "The GCP project ID"
+  description = "The GCP project ID (defaults to currently configured gcloud project if not specified)"
   type        = string
+  default     = null # Will be replaced by the detected project
 }
 
 variable "cluster_name" {

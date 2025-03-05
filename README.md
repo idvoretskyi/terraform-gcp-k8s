@@ -25,24 +25,25 @@ This repository contains Terraform configurations for setting up a cost-efficien
     ```bash
     terraform init
     ```
-3.  Set the `project_id` variable in `terraform.tfvars` or pass it via the command line:
+
+3.  Apply the Terraform configuration:
 
     ```bash
+    # Uses your current gcloud project automatically
+    terraform apply
+    
+    # OR specify a project ID manually
     terraform apply -var="project_id=YOUR_PROJECT_ID"
     ```
 
-4.  Apply the Terraform configuration:
+    The configuration will automatically use your currently configured gcloud project if you don't specify one.
 
-    ```bash
-    terraform apply
-    ```
-
-5.  Once the cluster is created, connect to it using the command provided in the outputs:
+4.  Once the cluster is created, connect to it using the command provided in the outputs:
     ```bash
     gcloud container clusters get-credentials CLUSTER_NAME --zone ZONE --project PROJECT_ID
     ```
 
-6.  Apply recommended Pod Disruption Budgets for critical components:
+5.  Apply recommended Pod Disruption Budgets for critical components:
     ```bash
     # The exact command will be shown in the Terraform outputs
     kubectl apply -f pdb.yaml

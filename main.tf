@@ -15,8 +15,13 @@ terraform {
   }
 }
 
+locals {
+  # Use either the explicitly provided project_id or the one from gcloud config
+  project_id = var.project_id != null ? var.project_id : data.external.gcloud_project.result.project
+}
+
 provider "google" {
-  project = var.project_id
+  project = local.project_id
 }
 
 # Get current GCP authentication for k8s providers
@@ -52,10 +57,10 @@ resource "google_container_cluster" "primary" {
 # Use a single node pool with ARM instances
 resource "google_container_node_pool" "arm_nodes" {
   name       = "${var.cluster_name}-arm-pool"
-  cluster    = google_container_cluster.primary.id
   location   = var.location
+  cluster    = google_container_cluster.primary.id
   
-  # Set initial node count
+  # Explicitly set initial_node_count - this is required
   initial_node_count = 1
   
   # Autoscaling configuration
@@ -70,24 +75,16 @@ resource "google_container_node_pool" "arm_nodes" {
     auto_upgrade = true
   }
 
-  # Node configuration is required and must have at least machine_type, disk_size_gb, and disk_type
+  # Keep the node_config block minimal
   node_config {
     machine_type = "t2a-standard-1"
     disk_size_gb = 100
     disk_type    = "pd-standard"
     
-    # Optional settings
-    preemptible  = true
-    image_type   = "COS_CONTAINERD"
-    
+    # Basic OAuth scopes
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
-    
-    labels = {
-      "architecture" = "arm64"
-      "environment"  = var.environment
-    }
   }
   
   # Ensure the creation happens serially after the cluster
