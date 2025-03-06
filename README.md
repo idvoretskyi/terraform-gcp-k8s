@@ -7,15 +7,15 @@ This repository contains Terraform configurations for setting up a cost-efficien
 * Uses ARM-based Tau T2A instances (t2a-standard-1) for optimal price/performance
 * Located in us-central1 region where T2A instances are available
 * Includes autoscaling configuration from 0 to 3 nodes (configurable)
-* Uses a single, simplified ARM-based node pool
 * Uses the latest available Kubernetes version via RAPID release channel
 * Properly configured for VPC-native networking
+* **Now using the official Google-maintained GKE module** for improved reliability and best practices
 
 ## Prerequisites
 
 *   Google Cloud Platform (GCP) account
-*   Terraform installed
-*   GCP project ID
+*   Terraform installed (v1.0.0+)
+*   GCP project ID (will use your current gcloud project if not specified)
 
 ## Usage
 
@@ -40,7 +40,7 @@ This repository contains Terraform configurations for setting up a cost-efficien
 
 4.  Once the cluster is created, connect to it using the command provided in the outputs:
     ```bash
-    gcloud container clusters get-credentials CLUSTER_NAME --zone ZONE --project PROJECT_ID
+    gcloud container clusters get-credentials CLUSTER_NAME --location LOCATION --project PROJECT_ID
     ```
 
 5.  Apply recommended Pod Disruption Budgets for critical components:
@@ -49,11 +49,20 @@ This repository contains Terraform configurations for setting up a cost-efficien
     kubectl apply -f pdb.yaml
     ```
 
+## Architecture Changes
+
+We now use the [terraform-google-modules/kubernetes-engine](https://registry.terraform.io/modules/terraform-google-modules/kubernetes-engine/google/latest) module maintained by Google. This provides several advantages:
+
+* More reliable deployment with industry best practices
+* Better handling of complex GKE features
+* Proper support for ARM-based node pools
+* Regular updates to match GCP's API changes
+
 ## Kubernetes Version Management
 
 This configuration ensures you're always using the latest Kubernetes version available on GKE by:
 
-1. Setting the `min_master_version` to "latest"
+1. Setting the Kubernetes version to "latest"
 2. Using the "RAPID" release channel
 
 The RAPID release channel provides access to the newest stable Kubernetes versions as soon as they're available on GKE. This ensures you can leverage the latest features, security updates, and bug fixes.
@@ -62,20 +71,14 @@ If you prefer more stability over having the latest features:
 
 - Change to the "REGULAR" release channel for a balance of new features and stability
 - Change to the "STABLE" release channel for maximum stability (but older versions)
-- Specify a concrete version like `min_master_version = "1.27"` instead of "latest"
 
 Example configuration:
 ```hcl
-resource "google_container_cluster" "primary" {
+module "gke_cluster" {
   # ...other settings...
   
   # For stability (alternatives to our default "RAPID" setting)
-  release_channel {
-    channel = "REGULAR"  # or "STABLE" for even more stability
-  }
-  
-  # Specific version instead of latest
-  min_master_version = "1.27"  # Replace with desired version
+  release_channel = "REGULAR"  # or "STABLE" for even more stability
 }
 ```
 
@@ -96,17 +99,15 @@ T2A instances are only available in specific regions/zones. As of the latest upd
 * europe-west4 (zones a, b, c)
 * asia-southeast1 (zones a, b, c)
 
-If you encounter the "machine type not found" error, you need to modify the region/zone in your Terraform configuration to use one of the supported locations.
-
 ### Application Compatibility
 
 When using ARM-based instances, ensure your container images support the ARM64 architecture:
 
 * Use multi-architecture images when available
-* Set node affinity rules for workloads that require specific architectures
+* Add appropriate tolerations for ARM architecture
 * Test your applications thoroughly on ARM architecture
 
-Example node selector for ARM-compatible workloads:
+Example pod configuration with ARM compatibility:
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -116,9 +117,23 @@ spec:
   containers:
   - name: your-container
     image: your-arm64-image
-  nodeSelector:
-    kubernetes.io/arch: arm64
+  tolerations:
+  - key: "kubernetes.io/arch"
+    operator: "Equal"
+    value: "arm64"
+    effect: "NoSchedule"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+            - arm64
 ```
+
+For a detailed guide on ARM64 compatibility, see [ARM-COMPATIBILITY.md](./docs/ARM-COMPATIBILITY.md).
 
 ## Pod Disruption Budgets
 
@@ -175,134 +190,3 @@ EOF
 ```
 
 Or using Helm by including PDBs in your application charts.
-
-### Troubleshooting Scale-Down Issues
-
-If you notice nodes not scaling down despite low utilization:
-
-1. Check if pods are blocking eviction:
-   ```
-   kubectl get pods --all-namespaces -o wide | grep <node-name>
-   ```
-
-2. Verify existing PDBs:
-   ```
-   kubectl get pdb --all-namespaces
-   ```
-
-3. Look for eviction messages:
-   ```
-   kubectl describe node <node-name> | grep -A10 Events:
-   ```
-
-## Troubleshooting
-
-### Machine Type Not Found Error
-
-If you encounter an error like:
-```
-Error: error creating NodePool: googleapi: Error 400: Invalid machine type t2a-standard-1 in zone [zone]: resource not found
-```
-
-This means the T2A ARM-based instances are not available in your selected region/zone. To fix this:
-
-1. Modify your Terraform configuration to use a region that supports T2A instances:
-
-```hcl
-resource "google_container_cluster" "primary" {
-  name     = "arm-cluster"
-  location = "us-central1"  # Change to a T2A-supported region
-  # ...other configuration...
-}
-```
-
-2. Check the latest documentation for [Tau T2A VM availability](https://cloud.google.com/compute/docs/regions-zones#available) to ensure you're using a supported region.
-
-## Customization
-
-The cluster can be customized by modifying the variables in `terraform.tfvars`:
-
-```hcl
-project_id   = "your-gcp-project-id"
-cluster_name = "arm-cluster"
-location     = "us-central1-a"
-node_count   = 5  # Adjust maximum node count as needed
-environment  = "production"
-```
-
-## Destroy
-
-To destroy the cluster, run:
-
-```bash
-terraform destroy
-```
-
-## Network Configuration
-
-This cluster uses VPC-native networking (alias IP) which provides:
-- Better network performance
-- Native integration with Google Cloud load balancers
-- Support for larger pod density per node
-
-The configuration automatically assigns IP ranges for pods and services using GKE's automatic IP allocation feature.
-
-## Optional Monitoring with Prometheus and Grafana
-
-This repository includes an optional monitoring module that deploys Prometheus and Grafana on your ARM-based GKE cluster.
-
-### Enabling/Disabling Monitoring
-
-Monitoring is **enabled by default**. You can control this by setting the `enable_monitoring` variable:
-
-```hcl
-# In your terraform.tfvars file:
-enable_monitoring = true  # or false to disable
-```
-
-You can also disable it from the command line:
-
-```bash
-terraform apply -var="enable_monitoring=false"
-```
-
-### Monitoring Configuration Options
-
-You can configure the monitoring setup with the following variables:
-
-```hcl
-# In your terraform.tfvars file:
-grafana_admin_password = "secure-password"  # Default: "admin"
-monitoring_namespace   = "monitoring"       # Default: "monitoring" 
-grafana_expose_lb      = true              # Default: false
-```
-
-### Monitoring Features
-
-* **Prometheus**: Collects and stores metrics from your Kubernetes cluster
-* **Grafana**: Provides visualization and dashboards for the collected metrics
-* **ARM-optimized**: Configured to work with ARM64 architecture
-* **Persistence**: Both Prometheus and Grafana have persistent storage
-
-### Accessing Grafana
-
-If you enable the LoadBalancer (`grafana_expose_lb = true`), you can access Grafana at the external IP shown in the Terraform outputs:
-
-```bash
-terraform output grafana_url
-```
-
-Login using:
-* Username: admin
-* Password: The value of `grafana_admin_password` (default: "admin")
-
-For more details, see the [monitoring module documentation](./modules/monitoring/README.md).
-
-## Notes
-*   Preemptible nodes are significantly cheaper than regular nodes but can be terminated by GCP at any time.
-*   Ensure that your workloads can tolerate interruptions when using preemptible nodes.
-*   For production workloads, consider using a mix of preemptible and regular nodes.
-## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-## Author
-*   [Ihor Dvoretskyi](https://github.com/idvoretskyi)

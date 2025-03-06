@@ -28,6 +28,32 @@ resource "helm_release" "prometheus" {
     type  = "string"
   }
 
+  set {
+    name  = "server.nodeSelector.kubernetes\\.io/arch"
+    value = "arm64"
+  }
+  
+  # Add explicit tolerations for ARM architecture
+  set {
+    name  = "server.tolerations[0].key"
+    value = "kubernetes.io/arch"
+  }
+  
+  set {
+    name  = "server.tolerations[0].operator"
+    value = "Equal"
+  }
+  
+  set {
+    name  = "server.tolerations[0].value"
+    value = "arm64"
+  }
+  
+  set {
+    name  = "server.tolerations[0].effect"
+    value = "NoSchedule"
+  }
+
   values = [
     var.prometheus_additional_values
   ]
@@ -62,6 +88,27 @@ resource "helm_release" "grafana" {
     name  = "nodeSelector.kubernetes\\.io/arch"
     value = "arm64"
     type  = "string"
+  }
+
+  # Add explicit tolerations for ARM architecture
+  set {
+    name  = "tolerations[0].key"
+    value = "kubernetes.io/arch"
+  }
+  
+  set {
+    name  = "tolerations[0].operator"
+    value = "Equal"
+  }
+  
+  set {
+    name  = "tolerations[0].value"
+    value = "arm64"
+  }
+  
+  set {
+    name  = "tolerations[0].effect"
+    value = "NoSchedule"
   }
 
   # Default Prometheus data source configuration

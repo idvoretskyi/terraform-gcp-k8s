@@ -2,110 +2,101 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "4.68.0"
+      version = "~> 4.68.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.20"
+      version = "~> 2.20.0"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.9"
+      version = "~> 2.9.0"
     }
   }
+  required_version = ">= 1.0.0"
 }
 
 locals {
   # Use either the explicitly provided project_id or the one from gcloud config
   project_id = var.project_id != null ? var.project_id : data.external.gcloud_project.result.project
+  
+  # Default region from location if not specified
+  region = var.region != "" ? var.region : (
+    length(split("-", var.location)) > 2 ? var.location : join("-", slice(split("-", var.location), 0, 2))
+  )
+  
+  # Default zone from location if not specified
+  zone = length(split("-", var.location)) > 2 ? var.location : null
 }
 
 provider "google" {
   project = local.project_id
 }
 
-# Get current GCP authentication for k8s providers
 data "google_client_config" "default" {}
 
-resource "google_container_cluster" "primary" {
-  name     = var.cluster_name
-  location = var.location
+# Use the Google-maintained GKE module instead of direct resources
+module "gke_cluster" {
+  source                     = "terraform-google-modules/kubernetes-engine/google"
+  version                    = "~> 25.0"
   
-  # Remove default node pool
-  remove_default_node_pool = true
-  initial_node_count       = 1
+  # Project settings
+  project_id                 = local.project_id
+  name                       = var.cluster_name
+  regional                   = var.zone == null ? true : false
+  region                     = local.region
+  zones                      = var.zone != null ? [var.zone] : []
   
-  # Other cluster settings
-  networking_mode = "VPC_NATIVE"
+  # Network settings
+  network                    = var.network
+  subnetwork                 = var.subnetwork
+  ip_range_pods              = var.ip_range_pods
+  ip_range_services          = var.ip_range_services
   
-  # Required for VPC-native clusters
-  ip_allocation_policy {
-    # By not specifying ranges, GKE will auto-allocate from the VPC
-    cluster_ipv4_cidr_block  = ""
-    services_ipv4_cidr_block = ""
-  }
+  # Cluster settings
+  kubernetes_version         = "latest"
+  release_channel            = "RAPID"
+  create_service_account     = true
+  remove_default_node_pool   = true
+  initial_node_count         = 1
   
-  # Use RAPID release channel for latest Kubernetes versions
-  release_channel {
-    channel = "RAPID"
-  }
-  
-  # Set minimum Kubernetes version to latest available
-  min_master_version = "latest"
-}
-
-# Use a single node pool with ARM instances
-resource "google_container_node_pool" "arm_nodes" {
-  name       = "${var.cluster_name}-arm-pool"
-  location   = var.location
-  cluster    = google_container_cluster.primary.id
-  
-  # Explicitly set initial_node_count - this is required
-  initial_node_count = 1
-  
-  # Autoscaling configuration
-  autoscaling {
-    min_node_count = 0
-    max_node_count = var.node_count
-  }
-  
-  # Management configuration for auto-repair and auto-upgrade
-  management {
-    auto_repair  = true
-    auto_upgrade = true
-  }
-
-  # Keep the node_config block minimal
-  node_config {
-    machine_type = "t2a-standard-1"
-    disk_size_gb = 100
-    disk_type    = "pd-standard"
-    
-    # Basic OAuth scopes
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
-  
-  # Ensure the creation happens serially after the cluster
-  depends_on = [
-    google_container_cluster.primary
+  # ARM-based node pool
+  node_pools = [
+    {
+      name                   = "arm-pool"
+      machine_type           = "t2a-standard-1"
+      min_count              = var.min_node_count
+      max_count              = var.max_node_count
+      initial_node_count     = var.initial_node_count
+      disk_size_gb           = 100
+      disk_type              = "pd-standard"
+      image_type             = "COS_CONTAINERD"
+      auto_repair            = true
+      auto_upgrade           = true
+      preemptible            = var.preemptible
+      
+      # Custom labels to identify ARM nodes
+      node_labels = {
+        "arm-architecture" = "true"
+        "environment"      = var.environment
+      }
+    }
   ]
 }
 
 # Configure Kubernetes provider to access GKE cluster
 provider "kubernetes" {
-  host                   = "https://${google_container_cluster.primary.endpoint}"
+  host                   = "https://${module.gke_cluster.endpoint}"
   token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+  cluster_ca_certificate = base64decode(module.gke_cluster.ca_certificate)
 }
 
 # Configure Helm provider
 provider "helm" {
   kubernetes {
-    host                   = "https://${google_container_cluster.primary.endpoint}"
+    host                   = "https://${module.gke_cluster.endpoint}"
     token                  = data.google_client_config.default.access_token
-    cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
+    cluster_ca_certificate = base64decode(module.gke_cluster.ca_certificate)
   }
 }
 
@@ -118,7 +109,5 @@ module "monitoring" {
   grafana_admin_password = var.grafana_admin_password
   grafana_expose_lb      = var.grafana_expose_lb
   
-  depends_on = [
-    google_container_node_pool.arm_nodes
-  ]
+  depends_on = [module.gke_cluster]
 }

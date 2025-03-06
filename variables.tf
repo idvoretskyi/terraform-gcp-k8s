@@ -1,9 +1,11 @@
+# Project Variables
 variable "project_id" {
   description = "The GCP project ID (defaults to currently configured gcloud project if not specified)"
   type        = string
-  default     = null # Will be replaced by the detected project
+  default     = null
 }
 
+# Cluster Configuration
 variable "cluster_name" {
   description = "The name of the GKE cluster"
   type        = string
@@ -11,19 +13,75 @@ variable "cluster_name" {
 }
 
 variable "location" {
-  description = "The region/zone for the GKE cluster"
+  description = "The location (region or zone) for the GKE cluster"
   type        = string
   default     = "us-central1-a"  # Default to a zone where T2A instances are available
 }
 
-variable "zone" {
-  description = "The zone for node pools if different from cluster location"
+variable "region" {
+  description = "The region for the GKE cluster (derived from location if not specified)"
   type        = string
   default     = ""
 }
 
+variable "zone" {
+  description = "The zone for node pools (derived from location if not specified)"
+  type        = string
+  default     = ""
+}
+
+# Network Configuration
+variable "network" {
+  description = "The VPC network to host the cluster"
+  type        = string
+  default     = "default"
+}
+
+variable "subnetwork" {
+  description = "The subnetwork to host the cluster"
+  type        = string
+  default     = "default"
+}
+
+variable "ip_range_pods" {
+  description = "The secondary IP range for pods"
+  type        = string
+  default     = ""
+}
+
+variable "ip_range_services" {
+  description = "The secondary IP range for services"
+  type        = string
+  default     = ""
+}
+
+# Node Pool Configuration
+variable "initial_node_count" {
+  description = "Initial number of nodes per zone"
+  type        = number
+  default     = 1
+}
+
+variable "min_node_count" {
+  description = "Minimum number of nodes per zone"
+  type        = number
+  default     = 0
+}
+
+variable "max_node_count" {
+  description = "Maximum number of nodes per zone"
+  type        = number
+  default     = 3
+}
+
+variable "preemptible" {
+  description = "Whether to use preemptible nodes"
+  type        = bool
+  default     = true
+}
+
 variable "service_account" {
-  description = "Service account for nodes"
+  description = "Service account for nodes (optional)"
   type        = string
   default     = ""
 }
@@ -34,12 +92,7 @@ variable "environment" {
   default     = "development"
 }
 
-variable "node_count" {
-  description = "Number of nodes in the GKE cluster"
-  type        = number
-  default     = 3
-}
-
+# Monitoring Configuration
 variable "enable_monitoring" {
   description = "Whether to enable Prometheus and Grafana monitoring"
   type        = bool

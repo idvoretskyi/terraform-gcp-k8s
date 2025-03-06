@@ -1,10 +1,21 @@
 # Example terraform.tfvars file
 # Copy to terraform.tfvars and modify as needed
 
-# Required
-project_id = "your-gcp-project-id"
+# Required (will use gcloud default project if not specified)
+# project_id = "your-gcp-project-id"
 
-# Optional - defaults are defined in variables.tf
+# Cluster Configuration
 cluster_name = "arm-gke-cluster"
-location     = "us-central1-a"  # Must be a region with T2A support
+location     = "us-central1-a"  # Must be a region/zone with T2A support
 environment  = "staging"
+
+# Node Pool Configuration
+initial_node_count = 1
+min_node_count     = 0
+max_node_count     = 3
+preemptible        = true  # Set to false for production workloads
+
+# Monitoring Configuration
+enable_monitoring       = true
+grafana_admin_password  = "secure-password"  # Change for production
+grafana_expose_lb       = false  # Set to true to expose Grafana via LoadBalancer
