@@ -49,9 +49,9 @@ This repository contains Terraform configurations for setting up a cost-efficien
     kubectl apply -f pdb.yaml
     ```
 
-## Architecture Changes
+## Architecture Overview
 
-We now use the [terraform-google-modules/kubernetes-engine](https://registry.terraform.io/modules/terraform-google-modules/kubernetes-engine/google/latest) module maintained by Google. This provides several advantages:
+We use the [terraform-google-modules/kubernetes-engine](https://registry.terraform.io/modules/terraform-google-modules/kubernetes-engine/google/latest) module maintained by Google. This provides several advantages:
 
 * More reliable deployment with industry best practices
 * Better handling of complex GKE features
@@ -133,7 +133,7 @@ spec:
             - arm64
 ```
 
-For a detailed guide on ARM64 compatibility, see [ARM-COMPATIBILITY.md](./docs/ARM-COMPATIBILITY.md).
+For details on ARM64 architecture with GKE, see the [Google documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/arm-on-gke).
 
 ## Pod Disruption Budgets
 
@@ -190,3 +190,101 @@ EOF
 ```
 
 Or using Helm by including PDBs in your application charts.
+
+## Customization
+
+The cluster can be customized by modifying the variables in `terraform.tfvars`:
+
+```hcl
+# Required (will use gcloud default project if not specified)
+# project_id = "your-gcp-project-id"
+
+# Cluster Configuration
+cluster_name = "arm-gke-cluster"
+location     = "us-central1-a"  # Must be a region/zone with T2A support
+environment  = "staging"
+
+# Node Pool Configuration
+initial_node_count = 1
+min_node_count     = 0
+max_node_count     = 3
+preemptible        = true  # Set to false for production workloads
+
+# Monitoring Configuration
+enable_monitoring       = true
+grafana_admin_password  = "secure-password"  # Change for production
+grafana_expose_lb       = false  # Set to true to expose Grafana via LoadBalancer
+```
+
+## Optional Monitoring with Prometheus and Grafana
+
+This repository includes an optional monitoring module that deploys Prometheus and Grafana on your ARM-based GKE cluster.
+
+### Enabling/Disabling Monitoring
+
+Monitoring is **enabled by default**. You can control this by setting the `enable_monitoring` variable:
+
+```hcl
+# In your terraform.tfvars file:
+enable_monitoring = true  # or false to disable
+```
+
+You can also disable it from the command line:
+
+```bash
+terraform apply -var="enable_monitoring=false"
+```
+
+### Monitoring Configuration Options
+
+You can configure the monitoring setup with the following variables:
+
+```hcl
+# In your terraform.tfvars file:
+grafana_admin_password = "secure-password"  # Default: "admin"
+monitoring_namespace   = "monitoring"       # Default: "monitoring" 
+grafana_expose_lb      = true              # Default: false
+```
+
+### Monitoring Features
+
+* **Prometheus**: Collects and stores metrics from your Kubernetes cluster
+* **Grafana**: Provides visualization and dashboards for the collected metrics
+* **ARM-optimized**: Configured to work with ARM64 architecture
+* **Persistence**: Both Prometheus and Grafana have persistent storage
+
+### Accessing Grafana
+
+If you enable the LoadBalancer (`grafana_expose_lb = true`), you can access Grafana at the external IP shown in the Terraform outputs:
+
+```bash
+terraform output grafana_url
+```
+
+Login using:
+* Username: admin
+* Password: The value of `grafana_admin_password` (default: "admin")
+
+For more details, see the [monitoring module documentation](./modules/monitoring/README.md).
+
+## Examples
+
+See the [examples](./examples) directory for additional configurations and use cases:
+
+* [With Monitoring](./examples/with-monitoring) - Example with monitoring enabled
+* [Using GKE Module](./examples/using-gke-module) - Example using the Google-maintained GKE module
+* [Cost-Efficient Demo](./examples/cost-efficient-demo) - Low-cost setup for demos and testing
+
+## Notes
+
+*   Preemptible nodes are significantly cheaper than regular nodes but can be terminated by GCP at any time.
+*   Ensure that your workloads can tolerate interruptions when using preemptible nodes.
+*   For production workloads, consider using a mix of preemptible and regular nodes.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Author
+
+*   [Ihor Dvoretskyi](https://github.com/idvoretskyi)
